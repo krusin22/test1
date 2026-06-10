@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ระบบสอบออนไลน์</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: Arial, sans-serif; text-align: center; background-color: #f0f2f5; overflow: hidden; }
+        
+        #start-screen { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; padding: 20px; box-sizing: border-box;}
+        
+        #exam-container { display: none; width: 100vw; height: 100vh; }
+        iframe { width: 100%; height: 100%; border: none; }
+        
+        #lock-screen { display: none; background-color: #ffe6e6; color: #cc0000; height: 100vh; width: 100vw; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
+        
+        input[type="text"], input[type="password"] { padding: 12px; font-size: 16px; margin-top: 12px; text-align: center; border: 1px solid #ccc; border-radius: 5px; width: 80%; max-width: 300px; box-sizing: border-box; }
+        button { padding: 12px 25px; font-size: 16px; cursor: pointer; margin-top: 18px; background-color: #007bff; color: white; border: none; border-radius: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 80%; max-width: 300px; }
+        button:hover { background-color: #0056b3; }
+        .lock-btn { background-color: #cc0000; width: auto; }
+        .lock-btn:hover { background-color: #990000; }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen" style="display: flex;">
+        <h2>ยินดีต้อนรับสู่การสอบ</h2>
+        <p>กรุณากรอกข้อมูลให้ครบถ้วนก่อนเริ่มทำข้อสอบ<br><b>ห้ามสลับแอป ย่อหน้าจอ หรือดึงแถบแจ้งเตือนเด็ดขาด</b></p>
+        
+        <input type="text" id="student-name" placeholder="ชื่อ - นามสกุล">
+        <input type="text" id="student-class" placeholder="ชั้น (เช่น ม.6/1)">
+        <input type="text" id="student-no" placeholder="เลขที่">
+        
+        <button onclick="startExam()">เริ่มทำข้อสอบ</button>
+    </div>
+
+    <div id="exam-container">
+        <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSdpo0s0cevCb-Exz-kZY_o3GcomSBiWMdvfQHi-tmQdQkDOew/viewform?embedded=true" frameborder="0" marginheight="0" marginwidth="0">
+            กำลังโหลด…
+        </iframe>
+    </div>
+
+    <div id="lock-screen" style="display: none;">
+        <h2>🔒 ระบบถูกล็อก!</h2>
+        <p>ตรวจพบการเปลี่ยนหน้าจอ หรือสลับแอปพลิเคชัน<br><b>(ระบบได้แจ้งเตือนไปยังผู้คุมสอบแล้ว)</b></p>
+        <input type="password" id="unlock-password" placeholder="ใส่รหัสเพื่อปลดล็อก">
+        <button class="lock-btn" onclick="unlockExam()">ปลดล็อกเพื่อสอบต่อ</button>
+    </div>
+
+    <script>
+        const ADMIN_PASSWORD = "1234"; 
+        const DISCORD_WEBHOOK_URL = "วาง_URL_ของ_DISCORD_WEBHOOK_ที่นี่"; 
+
+        const startScreen = document.getElementById('start-screen');
+        const examContainer = document.getElementById('exam-container');
+        const lockScreen = document.getElementById('lock-screen');
+        
+        const studentNameInput = document.getElementById('student-name');
+        const studentClassInput = document.getElementById('student-class');
+        const studentNoInput = document.getElementById('student-no');
+
+        // ตัวแปรสำคัญ: ระบบล็อกจะทำงานก็ต่อเมื่อค่านี้เป็น true เท่านั้น
+        let isExamActive = false;
+        
+        const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+        window.onload = () => {
+            loadSavedData();
+            document.addEventListener('contextmenu', event => event.preventDefault());
+        };
+
+        // โหลดแค่ชื่อที่เคยพิมพ์ไว้มาแสดงเพื่อความรวดเร็ว (ไม่มีการจำสถานะล็อกแดงอีกต่อไป)
+        function loadSavedData() {
+            const savedName = localStorage.getItem('examStudentName');
+            const savedClass = localStorage.getItem('examStudentClass');
+            const savedNo = localStorage.getItem('examStudentNo');
+
+            if (savedName) studentNameInput.value = savedName;
+            if (savedClass) studentClassInput.value = savedClass;
+            if (savedNo) studentNoInput.value = savedNo;
+        }
+
+        function startExam() {
+            const studentName = studentNameInput.value.trim();
+            const studentClass = studentClassInput.value.trim();
+            const studentNo = studentNoInput.value.trim();
+
+            if (!studentName || !studentClass || !studentNo) {
+                alert("กรุณากรอกข้อมูลให้ครบทุกช่อง (ชื่อ-นามสกุล, ชั้น, เลขที่) ก่อนเริ่มสอบครับ");
+                return;
+            }
+
+            localStorage.setItem('examStudentName', studentName);
+            localStorage.setItem('examStudentClass', studentClass);
+            localStorage.setItem('examStudentNo', studentNo);
+
+            const docElm = document.documentElement;
+            if (docElm.requestFullscreen) docElm.requestFullscreen().catch(() => {});
+            else if (docElm.webkitRequestFullscreen) docElm.webkitRequestFullscreen();
+            else if (docElm.msRequestFullscreen) docElm.msRequestFullscreen();
+
+            startScreen.style.display = 'none';
+            lockScreen.style.display = 'none';
+            examContainer.style.display = 'block';
+
+            // เริ่มระบบป้องกันหลังจากโหลดข้อสอบและเข้าโหมดเต็มจอเสร็จแล้ว (หน่วงเวลา 2 วินาที)
+            setTimeout(() => {
+                isExamActive = true;
+            }, 2000);
+        }
+
+        // --- ระบบป้องกัน (จะทำงานเมื่อ isExamActive เป็น true เท่านั้น) ---
+
+        document.addEventListener("visibilitychange", () => {
+            if (!isExamActive) return; // ถ้ายังไม่เริ่มสอบ ห้ามล็อกเด็ดขาด
+            if (document.visibilityState === "hidden") {
+                triggerLock();
+            }
+        });
+
+        window.addEventListener("blur", () => {
+            if (!isExamActive) return; // ถ้ายังไม่เริ่มสอบ ห้ามล็อกเด็ดขาด
+            
+            setTimeout(() => {
+                if (!isExamActive) return;
+                if (document.activeElement && document.activeElement.tagName === 'IFRAME') return;
+                if (isTouchDevice) return;
+                
+                triggerLock();
+            }, 500); 
+        });
+
+        const fullscreenEvents = ["fullscreenchange", "webkitfullscreenchange", "msfullscreenchange"];
+        fullscreenEvents.forEach(evt => document.addEventListener(evt, () => {
+            if (!isExamActive) return; // ถ้ายังไม่เริ่มสอบ ห้ามล็อกเด็ดขาด
+            
+            setTimeout(() => {
+                if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+                    if (isTouchDevice) return;
+                    triggerLock();
+                }
+            }, 500);
+        }));
+
+        // -----------------------------------------------------------
+
+        function triggerLock() {
+            isExamActive = false; // หยุดระบบจับผิดชั่วคราวขณะติดล็อก
+            examContainer.style.display = 'none';
+            startScreen.style.display = 'none';
+            lockScreen.style.display = 'flex';
+            
+            sendDiscordAlert(); 
+        }
+
+        function sendDiscordAlert() {
+            if (DISCORD_WEBHOOK_URL === "วาง_URL_ของ_DISCORD_WEBHOOK_ที่นี่") return;
+            
+            const studentName = localStorage.getItem('examStudentName') || "-";
+            const studentClass = localStorage.getItem('examStudentClass') || "-";
+            const studentNo = localStorage.getItem('examStudentNo') || "-";
+            const timeString = new Date().toLocaleTimeString('th-TH');
+
+            const payload = {
+                content: `🚨 **แจ้งเตือน: ตรวจพบการออกจากหน้าจอข้อสอบ!**\n👤 **ผู้สอบ:** ${studentName}\n📍 **ชั้น:** ${studentClass}  |  🔢 **เลขที่:** ${studentNo}\n⏰ **เวลา:** ${timeString}`
+            };
+
+            fetch(DISCORD_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).catch(error => console.error('Error:', error));
+        }
+
+        function unlockExam() {
+            const pwdInput = document.getElementById('unlock-password').value;
+            if (pwdInput === ADMIN_PASSWORD) {
+                document.getElementById('unlock-password').value = ''; 
+                
+                sendUnlockAlert();
+                startExam(); // กลับไปเข้าสู่ขั้นตอนเริ่มทำข้อสอบใหม่ (เปิดเต็มจอและนับ 2 วิใหม่)
+            } else {
+                alert("รหัสผ่านไม่ถูกต้อง!");
+            }
+        }
+
+        function sendUnlockAlert() {
+            if (DISCORD_WEBHOOK_URL === "วาง_URL_ของ_DISCORD_WEBHOOK_ที่นี่") return;
+            const studentName = localStorage.getItem('examStudentName') || "-";
+            const studentClass = localStorage.getItem('examStudentClass') || "-";
+            const studentNo = localStorage.getItem('examStudentNo') || "-";
+            
+            fetch(DISCORD_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: `✅ **ปลดล็อกแล้ว:** อนุญาตให้ **${studentName}** (ชั้น ${studentClass} เลขที่ ${studentNo}) ทำข้อสอบต่อ`
+                })
+            }).catch(error => console.error(error));
+        }
+    </script>
+
+</body>
+</html>

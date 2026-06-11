@@ -9,7 +9,7 @@
         
         #start-screen { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; padding: 20px; box-sizing: border-box;}
         
-        #exam-container { display: none; width: 100vw; height: 100vh; }
+        #exam-container { display: none; width: 100vw; height: 100vh; -webkit-overflow-scrolling: touch; }
         iframe { width: 100%; height: 100%; border: none; }
         
         #lock-screen { display: none; background-color: #ffe6e6; color: #cc0000; height: 100vh; width: 100vw; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
@@ -19,13 +19,14 @@
         button:hover { background-color: #0056b3; }
         .lock-btn { background-color: #cc0000; width: auto; }
         .lock-btn:hover { background-color: #990000; }
+        #lock-reason { background-color: #ffcccc; padding: 10px; border-radius: 5px; font-weight: bold; margin-top: 10px; border: 1px solid #cc0000; }
     </style>
 </head>
 <body>
 
-    <div id="start-screen" style="display: flex;">
+    <div id="start-screen">
         <h2>ยินดีต้อนรับสู่การสอบ</h2>
-        <p>กรุณากรอกข้อมูลให้ครบถ้วนก่อนเริ่มทำข้อสอบ<br><b>ห้ามสลับแอป ย่อหน้าจอ หรือดึงแถบแจ้งเตือนเด็ดขาด</b></p>
+        <p>กรุณากรอกข้อมูลให้ครบถ้วนก่อนเริ่มทำข้อสอบ<br><b>ห้ามสลับแอป ย่อหน้าจอ หรือเปิดสองหน้าจอเด็ดขาด</b></p>
         
         <input type="text" id="student-name" placeholder="ชื่อ - นามสกุล">
         <input type="text" id="student-class" placeholder="ชั้น (เช่น ม.6/1)">
@@ -40,36 +41,37 @@
         </iframe>
     </div>
 
-    <div id="lock-screen" style="display: none;">
+    <div id="lock-screen">
         <h2>🔒 ระบบถูกล็อก!</h2>
-        <p>ตรวจพบการเปลี่ยนหน้าจอ หรือสลับแอปพลิเคชัน<br><b>(ระบบได้แจ้งเตือนไปยังผู้คุมสอบแล้ว)</b></p>
+        <p id="lock-reason">สาเหตุ: ไม่ทราบ</p>
+        <p><b>(ระบบได้ส่งแจ้งเตือนนี้ไปยังผู้คุมสอบแล้ว)</b></p>
         <input type="password" id="unlock-password" placeholder="ใส่รหัสเพื่อปลดล็อก">
         <button class="lock-btn" onclick="unlockExam()">ปลดล็อกเพื่อสอบต่อ</button>
     </div>
 
     <script>
         const ADMIN_PASSWORD = "1234"; 
-        const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1514135467526983690/dC4uOlA1U9IneoIaGQsL3iFhbyjQpBsyVmJ8PaEOM0x451BxmSAB6pQfVGqSUETglWqq"; 
+        const DISCORD_WEBHOOK_URL = "วาง_URL_ของ_DISCORD_WEBHOOK_ที่นี่"; 
 
         const startScreen = document.getElementById('start-screen');
         const examContainer = document.getElementById('exam-container');
         const lockScreen = document.getElementById('lock-screen');
+        const reasonText = document.getElementById('lock-reason');
         
         const studentNameInput = document.getElementById('student-name');
         const studentClassInput = document.getElementById('student-class');
         const studentNoInput = document.getElementById('student-no');
 
-        // ตัวแปรสำคัญ: ระบบล็อกจะทำงานก็ต่อเมื่อค่านี้เป็น true เท่านั้น
         let isExamActive = false;
         
-        const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        // แยกระบบมือถือและ PC ให้ขาดออกจากกัน (แก้บั๊กโน้ตบุ๊กทัชสกรีน)
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
         window.onload = () => {
             loadSavedData();
             document.addEventListener('contextmenu', event => event.preventDefault());
         };
 
-        // โหลดแค่ชื่อที่เคยพิมพ์ไว้มาแสดงเพื่อความรวดเร็ว (ไม่มีการจำสถานะล็อกแดงอีกต่อไป)
         function loadSavedData() {
             const savedName = localStorage.getItem('examStudentName');
             const savedClass = localStorage.getItem('examStudentClass');
@@ -90,10 +92,17 @@
                 return;
             }
 
+            // ถ้าแอบแบ่งหน้าจอไว้ก่อนกดเริ่มสอบ ให้ดักทางไว้เลย
+            if (window.innerWidth < window.screen.availWidth * 0.85) {
+                alert("กรุณาขยายหน้าต่างเบราว์เซอร์ให้เต็มจอก่อนกดเริ่มสอบครับ!");
+                return;
+            }
+
             localStorage.setItem('examStudentName', studentName);
             localStorage.setItem('examStudentClass', studentClass);
             localStorage.setItem('examStudentNo', studentNo);
 
+            // บังคับขยายเต็มจอ
             const docElm = document.documentElement;
             if (docElm.requestFullscreen) docElm.requestFullscreen().catch(() => {});
             else if (docElm.webkitRequestFullscreen) docElm.webkitRequestFullscreen();
@@ -103,57 +112,66 @@
             lockScreen.style.display = 'none';
             examContainer.style.display = 'block';
 
-            // เริ่มระบบป้องกันหลังจากโหลดข้อสอบและเข้าโหมดเต็มจอเสร็จแล้ว (หน่วงเวลา 2 วินาที)
             setTimeout(() => {
                 isExamActive = true;
             }, 2000);
         }
 
-        // --- ระบบป้องกัน (จะทำงานเมื่อ isExamActive เป็น true เท่านั้น) ---
-
+        // --- เซ็นเซอร์ 1: ตรวจจับการสลับแท็บ / พับจอ (ทำงานทุกอุปกรณ์) ---
         document.addEventListener("visibilitychange", () => {
-            if (!isExamActive) return; // ถ้ายังไม่เริ่มสอบ ห้ามล็อกเด็ดขาด
+            if (!isExamActive) return; 
             if (document.visibilityState === "hidden") {
-                triggerLock();
+                triggerLock("สลับแท็บ หรือ ปิดซ่อนหน้าต่าง");
             }
         });
 
-        window.addEventListener("blur", () => {
-            if (!isExamActive) return; // ถ้ายังไม่เริ่มสอบ ห้ามล็อกเด็ดขาด
-            
-            setTimeout(() => {
-                if (!isExamActive) return;
-                if (document.activeElement && document.activeElement.tagName === 'IFRAME') return;
-                if (isTouchDevice) return;
-                
-                triggerLock();
-            }, 500); 
-        });
+        // --- เซ็นเซอร์ 2: ตรวจจับการแบ่งหน้าจอ (Split Screen Killer) ---
+        function checkSplitScreen() {
+            if (!isExamActive) return;
+            // เช็กความกว้างเบราว์เซอร์ หากน้อยกว่า 85% ของจอมอนิเตอร์ แปลว่าแบ่งจอแน่นอน
+            const winWidth = window.outerWidth > 0 ? window.outerWidth : window.innerWidth;
+            const screenWidth = window.screen.availWidth;
 
+            if (winWidth < screenWidth * 0.85) {
+                triggerLock("แบ่งหน้าจอ หรือย่อหน้าต่างให้เล็กลง");
+            }
+        }
+        window.addEventListener('resize', checkSplitScreen);
+        setInterval(checkSplitScreen, 2000); // เช็กซ้ำทุก 2 วินาทีให้ชัวร์
+
+        // --- เซ็นเซอร์ 3: ตรวจจับการออกจากโหมดเต็มจอ (เฉพาะ PC) ---
         const fullscreenEvents = ["fullscreenchange", "webkitfullscreenchange", "msfullscreenchange"];
         fullscreenEvents.forEach(evt => document.addEventListener(evt, () => {
-            if (!isExamActive) return; // ถ้ายังไม่เริ่มสอบ ห้ามล็อกเด็ดขาด
-            
+            if (!isExamActive || isMobile) return; 
             setTimeout(() => {
                 if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-                    if (isTouchDevice) return;
-                    triggerLock();
+                    triggerLock("กดออกจากโหมดเต็มจอ (Fullscreen)");
                 }
             }, 500);
         }));
 
+        // --- เซ็นเซอร์ 4: ตรวจจับการคลิกแอปอื่นที่ลอยทับอยู่ (เฉพาะ PC) ---
+        window.addEventListener("blur", () => {
+            if (!isExamActive || isMobile) return; 
+            setTimeout(() => {
+                if (document.activeElement && document.activeElement.tagName === 'IFRAME') return; // คลิกข้อสอบ ปล่อยผ่าน
+                triggerLock("คลิกเมาส์ไปที่แอปพลิเคชันอื่น");
+            }, 500); 
+        });
+
         // -----------------------------------------------------------
 
-        function triggerLock() {
-            isExamActive = false; // หยุดระบบจับผิดชั่วคราวขณะติดล็อก
+        function triggerLock(reason) {
+            isExamActive = false; 
             examContainer.style.display = 'none';
             startScreen.style.display = 'none';
             lockScreen.style.display = 'flex';
             
-            sendDiscordAlert(); 
+            reasonText.innerText = `สาเหตุที่โดนล็อก: ${reason}`;
+            sendDiscordAlert(reason); 
         }
 
-        function sendDiscordAlert() {
+        function sendDiscordAlert(reason) {
             if (DISCORD_WEBHOOK_URL === "วาง_URL_ของ_DISCORD_WEBHOOK_ที่นี่") return;
             
             const studentName = localStorage.getItem('examStudentName') || "-";
@@ -162,7 +180,7 @@
             const timeString = new Date().toLocaleTimeString('th-TH');
 
             const payload = {
-                content: `🚨 **แจ้งเตือน: ตรวจพบการออกจากหน้าจอข้อสอบ!**\n👤 **ผู้สอบ:** ${studentName}\n📍 **ชั้น:** ${studentClass}  |  🔢 **เลขที่:** ${studentNo}\n⏰ **เวลา:** ${timeString}`
+                content: `🚨 **แจ้งเตือนการทุจริต!**\n👤 **ผู้สอบ:** ${studentName}\n📍 **ชั้น:** ${studentClass}  |  🔢 **เลขที่:** ${studentNo}\n⚠️ **สาเหตุ:** ${reason}\n⏰ **เวลา:** ${timeString}`
             };
 
             fetch(DISCORD_WEBHOOK_URL, {
@@ -178,7 +196,7 @@
                 document.getElementById('unlock-password').value = ''; 
                 
                 sendUnlockAlert();
-                startExam(); // กลับไปเข้าสู่ขั้นตอนเริ่มทำข้อสอบใหม่ (เปิดเต็มจอและนับ 2 วิใหม่)
+                startExam(); 
             } else {
                 alert("รหัสผ่านไม่ถูกต้อง!");
             }
@@ -187,14 +205,12 @@
         function sendUnlockAlert() {
             if (DISCORD_WEBHOOK_URL === "วาง_URL_ของ_DISCORD_WEBHOOK_ที่นี่") return;
             const studentName = localStorage.getItem('examStudentName') || "-";
-            const studentClass = localStorage.getItem('examStudentClass') || "-";
-            const studentNo = localStorage.getItem('examStudentNo') || "-";
             
             fetch(DISCORD_WEBHOOK_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    content: `✅ **ปลดล็อกแล้ว:** อนุญาตให้ **${studentName}** (ชั้น ${studentClass} เลขที่ ${studentNo}) ทำข้อสอบต่อ`
+                    content: `✅ **ปลดล็อกแล้ว:** อนุญาตให้ **${studentName}** ทำข้อสอบต่อได้`
                 })
             }).catch(error => console.error(error));
         }

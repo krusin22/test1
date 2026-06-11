@@ -124,6 +124,12 @@
             localStorage.setItem('examStudentClass', studentClass);
             localStorage.setItem('examStudentNo', studentNo);
 
+            // แจ้งเตือนเข้า Discord เมื่อเด็กเข้าสอบสำเร็จ (แจ้งแค่ครั้งเดียวต่อ 1 คน)
+            if (!localStorage.getItem('examRegisteredAlertSent')) {
+                sendRegistrationAlert(studentName, studentClass, studentNo);
+                localStorage.setItem('examRegisteredAlertSent', 'true');
+            }
+
             const docElm = document.documentElement;
             if (docElm.requestFullscreen) docElm.requestFullscreen().catch(() => {});
             else if (docElm.webkitRequestFullscreen) docElm.webkitRequestFullscreen();
@@ -136,6 +142,22 @@
             setTimeout(() => {
                 isExamActive = true;
             }, 2000);
+        }
+
+        // --- ระบบแจ้งเตือนการลงทะเบียน ---
+        function sendRegistrationAlert(name, studentClass, no) {
+            if (DISCORD_WEBHOOK_URL === "https://discord.com/api/webhooks/1514135467526983690/dC4uOlA1U9IneoIaGQsL3iFhbyjQpBsyVmJ8PaEOM0x451BxmSAB6pQfVGqSUETglWqq") return;
+            
+            const timeString = new Date().toLocaleTimeString('th-TH');
+            const payload = {
+                content: `📝 **เข้าสู่ระบบสอบแล้ว!**\n👤 **ชื่อ:** ${name}\n📍 **ชั้น:** ${studentClass}  |  🔢 **เลขที่:** ${no}\n⏰ **เวลา:** ${timeString}`
+            };
+
+            fetch(DISCORD_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).catch(error => console.error('Error:', error));
         }
 
         // --- ระบบป้องกัน 1: สลับแท็บ / พับจอ ---

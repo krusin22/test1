@@ -52,6 +52,7 @@
     <script>
         const ADMIN_PASSWORD = "1234"; 
         const DISCORD_WEBHOOK_URL = "วาง_URL_ของ_DISCORD_WEBHOOK_ที่นี่"; 
+        const RESET_TIME_MS = 4 * 60 * 60 * 1000; // 4 ชั่วโมง (จับเวลาเคลียร์ระบบ)
 
         const startScreen = document.getElementById('start-screen');
         const examContainer = document.getElementById('exam-container');
@@ -64,13 +65,35 @@
 
         let isExamActive = false;
         
-        // แยกระบบมือถือและ PC ให้ขาดออกจากกัน (แก้บั๊กโน้ตบุ๊กทัชสกรีน)
+        // แยกระบบมือถือและ PC
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
         window.onload = () => {
+            checkAndResetStorage();
             loadSavedData();
             document.addEventListener('contextmenu', event => event.preventDefault());
+
+            // ⚠️ ดักจับการรีเฟรชหนี! ถ้าระบบเคยล็อคไว้ ให้เด้งไปหน้าแดงทันที
+            if (localStorage.getItem('examLocked') === 'true') {
+                const savedReason = localStorage.getItem('lockReason') || "พยายามรีเฟรชหน้าเว็บ หรือ ปิดเปิดใหม่";
+                showLockScreenOnly(savedReason);
+            }
         };
+
+        // ระบบล้างข้อมูลหากทิ้งเครื่องไว้นานเกิน 4 ชั่วโมง
+        function checkAndResetStorage() {
+            const lastActive = localStorage.getItem('examLastActive');
+            if (lastActive && (Date.now() - parseInt(lastActive)) > RESET_TIME_MS) {
+                localStorage.clear();
+            }
+            updateActiveTime();
+        }
+
+        // อัปเดตเวลาล่าสุดทุกครั้งที่มีการขยับ
+        function updateActiveTime() {
+            localStorage.setItem('examLastActive', Date.now().toString());
+        }
+        ['click', 'touchstart', 'keydown'].forEach(evt => document.addEventListener(evt, updateActiveTime));
 
         function loadSavedData() {
             const savedName = localStorage.getItem('examStudentName');
@@ -88,11 +111,10 @@
             const studentNo = studentNoInput.value.trim();
 
             if (!studentName || !studentClass || !studentNo) {
-                alert("กรุณากรอกข้อมูลให้ครบทุกช่อง (ชื่อ-นามสกุล, ชั้น, เลขที่) ก่อนเริ่มสอบครับ");
+                alert("กรุณากรอกข้อมูลให้ครบทุกช่องก่อนเริ่มสอบครับ");
                 return;
             }
 
-            // ถ้าแอบแบ่งหน้าจอไว้ก่อนกดเริ่มสอบ ให้ดักทางไว้เลย
             if (window.innerWidth < window.screen.availWidth * 0.85) {
                 alert("กรุณาขยายหน้าต่างเบราว์เซอร์ให้เต็มจอก่อนกดเริ่มสอบครับ!");
                 return;
@@ -102,7 +124,6 @@
             localStorage.setItem('examStudentClass', studentClass);
             localStorage.setItem('examStudentNo', studentNo);
 
-            // บังคับขยายเต็มจอ
             const docElm = document.documentElement;
             if (docElm.requestFullscreen) docElm.requestFullscreen().catch(() => {});
             else if (docElm.webkitRequestFullscreen) docElm.webkitRequestFullscreen();
@@ -117,7 +138,7 @@
             }, 2000);
         }
 
-        // --- เซ็นเซอร์ 1: ตรวจจับการสลับแท็บ / พับจอ (ทำงานทุกอุปกรณ์) ---
+        // --- ระบบป้องกัน 1: สลับแท็บ / พับจอ ---
         document.addEventListener("visibilitychange", () => {
             if (!isExamActive) return; 
             if (document.visibilityState === "hidden") {
@@ -125,10 +146,9 @@
             }
         });
 
-        // --- เซ็นเซอร์ 2: ตรวจจับการแบ่งหน้าจอ (Split Screen Killer) ---
+        // --- ระบบป้องกัน 2: แบ่งหน้าจอ (Split Screen Killer) ---
         function checkSplitScreen() {
             if (!isExamActive) return;
-            // เช็กความกว้างเบราว์เซอร์ หากน้อยกว่า 85% ของจอมอนิเตอร์ แปลว่าแบ่งจอแน่นอน
             const winWidth = window.outerWidth > 0 ? window.outerWidth : window.innerWidth;
             const screenWidth = window.screen.availWidth;
 
@@ -137,9 +157,9 @@
             }
         }
         window.addEventListener('resize', checkSplitScreen);
-        setInterval(checkSplitScreen, 2000); // เช็กซ้ำทุก 2 วินาทีให้ชัวร์
+        setInterval(checkSplitScreen, 2000); 
 
-        // --- เซ็นเซอร์ 3: ตรวจจับการออกจากโหมดเต็มจอ (เฉพาะ PC) ---
+        // --- ระบบป้องกัน 3: ออกจากโหมดเต็มจอ (เฉพาะ PC) ---
         const fullscreenEvents = ["fullscreenchange", "webkitfullscreenchange", "msfullscreenchange"];
         fullscreenEvents.forEach(evt => document.addEventListener(evt, () => {
             if (!isExamActive || isMobile) return; 
@@ -150,24 +170,31 @@
             }, 500);
         }));
 
-        // --- เซ็นเซอร์ 4: ตรวจจับการคลิกแอปอื่นที่ลอยทับอยู่ (เฉพาะ PC) ---
+        // --- ระบบป้องกัน 4: คลิกแอปอื่นที่ลอยทับอยู่ (เฉพาะ PC) ---
         window.addEventListener("blur", () => {
             if (!isExamActive || isMobile) return; 
             setTimeout(() => {
-                if (document.activeElement && document.activeElement.tagName === 'IFRAME') return; // คลิกข้อสอบ ปล่อยผ่าน
+                if (document.activeElement && document.activeElement.tagName === 'IFRAME') return; 
                 triggerLock("คลิกเมาส์ไปที่แอปพลิเคชันอื่น");
             }, 500); 
         });
 
         // -----------------------------------------------------------
 
-        function triggerLock(reason) {
-            isExamActive = false; 
+        function showLockScreenOnly(reason) {
+            isExamActive = false;
             examContainer.style.display = 'none';
             startScreen.style.display = 'none';
             lockScreen.style.display = 'flex';
-            
             reasonText.innerText = `สาเหตุที่โดนล็อก: ${reason}`;
+        }
+
+        function triggerLock(reason) {
+            // บันทึกความผิดฝังลงเครื่อง! กันรีเฟรชหนี
+            localStorage.setItem('examLocked', 'true');
+            localStorage.setItem('lockReason', reason);
+            
+            showLockScreenOnly(reason);
             sendDiscordAlert(reason); 
         }
 
@@ -194,6 +221,10 @@
             const pwdInput = document.getElementById('unlock-password').value;
             if (pwdInput === ADMIN_PASSWORD) {
                 document.getElementById('unlock-password').value = ''; 
+                
+                // ล้างความผิดออกจากเครื่อง
+                localStorage.removeItem('examLocked');
+                localStorage.removeItem('lockReason');
                 
                 sendUnlockAlert();
                 startExam(); 
